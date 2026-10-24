@@ -1,0 +1,1891 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#4763ff" />
+  <meta name="description" content="Encrypted offline Claude conversation reader" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Claude Archive" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <title>Claude 聊天记录阅读器</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --panel-2: #f9fafc;
+      --text: #151923;
+      --muted: #697184;
+      --border: #dfe3eb;
+      --accent: #4763ff;
+      --accent-soft: #eef1ff;
+      --danger: #b42318;
+      --warn: #915930;
+      --shadow: 0 14px 34px rgba(15, 23, 42, .08);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 11px;
+      cursor: pointer;
+      transition: .15s ease;
+    }
+    button:hover { border-color: #bac3d4; transform: translateY(-1px); }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    button.ghost {
+      background: transparent;
+    }
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .app {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      height: 100vh;
+      min-height: 0;
+    }
+    header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.88);
+      backdrop-filter: blur(10px);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+      z-index: 10;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 4px 0;
+      letter-spacing: .2px;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(310px, 390px) minmax(0, 1fr);
+      min-height: 0;
+    }
+    aside {
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+    main {
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+    }
+    .upload-zone {
+      margin: 14px;
+      border: 1.5px dashed #b8c2d8;
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, #ffffff, #fbfcff);
+      padding: 15px;
+      display: grid;
+      gap: 10px;
+      box-shadow: 0 6px 20px rgba(15,23,42,.04);
+    }
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .upload-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    input[type="file"] { display: none; }
+    .file-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      color: white;
+      background: var(--accent);
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1px solid var(--accent);
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 8px;
+      margin-top: 3px;
+    }
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 9px;
+    }
+    .stat .num {
+      font-weight: 760;
+      font-size: 17px;
+    }
+    .stat .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .filters {
+      padding: 0 14px 12px;
+      display: grid;
+      gap: 9px;
+      border-bottom: 1px solid var(--border);
+    }
+    .search-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+    .input, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 9px 10px;
+      background: #fff;
+      outline: none;
+      color: var(--text);
+    }
+    .input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(71,99,255,.12);
+    }
+    .filter-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .list-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .conversation-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 8px 14px;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .conv-card {
+      border: 1px solid transparent;
+      background: transparent;
+      border-radius: 13px;
+      padding: 10px;
+      cursor: pointer;
+      margin-bottom: 6px;
+    }
+    .conv-card:hover {
+      background: var(--panel-2);
+      border-color: var(--border);
+    }
+    .conv-card.active {
+      background: var(--accent-soft);
+      border-color: rgba(71,99,255,.35);
+    }
+    .conv-title {
+      font-weight: 680;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      line-height: 1.35;
+    }
+    .conv-title span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .count-pill, .role-pill, .match-pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      color: var(--muted);
+      background: white;
+      white-space: nowrap;
+    }
+    .match-pill {
+      color: #2746c7;
+      border-color: rgba(71,99,255,.28);
+      background: #f5f7ff;
+    }
+    .conv-meta, .conv-preview {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+      line-height: 1.45;
+    }
+    .conv-preview {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .viewer-head {
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      display: grid;
+      gap: 10px;
+      box-shadow: 0 10px 24px rgba(15,23,42,.04);
+      z-index: 5;
+    }
+    .viewer-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .viewer-title {
+      font-size: 19px;
+      font-weight: 780;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .viewer-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+      line-height: 1.5;
+    }
+    .viewer-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .message-wrap {
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .message {
+      max-width: 1080px;
+      margin: 0 auto 14px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 20px rgba(15,23,42,.035);
+      overflow: hidden;
+    }
+    .message-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 13px;
+      background: #fbfcff;
+      border-bottom: 1px solid var(--border);
+    }
+    .message-head-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .role-pill.user {
+      background: #f3faf6;
+      border-color: #cbe8d4;
+      color: #1f6a3d;
+    }
+    .role-pill.assistant {
+      background: #fff8f1;
+      border-color: #efd6b9;
+      color: #8a4f18;
+    }
+    .role-pill.system {
+      background: #f6f2ff;
+      border-color: #ded1ff;
+      color: #5d3dab;
+    }
+    .message-time {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .message-body {
+      padding: 14px;
+      white-space: pre-wrap;
+      line-height: 1.65;
+      word-break: break-word;
+      font-size: 14px;
+    }
+    .attachments {
+      padding: 0 14px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .attachment {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--panel-2);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    mark {
+      background: #fff0a6;
+      color: inherit;
+      border-radius: 4px;
+      padding: 0 2px;
+    }
+    .empty {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 28px;
+    }
+    .empty-card {
+      max-width: 620px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 26px;
+    }
+    .empty-card h2 {
+      margin: 0 0 10px;
+      color: var(--text);
+      font-size: 22px;
+    }
+    .empty-card p { line-height: 1.7; margin: 8px 0; }
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: min(520px, calc(100vw - 36px));
+      background: #111827;
+      color: white;
+      padding: 11px 13px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: .2s ease;
+      z-index: 50;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .error-box {
+      margin: 0 14px 12px;
+      border: 1px solid #f1b8b1;
+      background: #fff7f6;
+      color: var(--danger);
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+    .source-chip {
+      display: inline-flex;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+    .small-muted { color: var(--muted); font-size: 12px; }
+    .kbd {
+      font-family: var(--mono);
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      border-bottom-width: 2px;
+      padding: 1px 5px;
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .mobile-nav, .mobile-menu-btn, .filter-toggle, .back-to-list { display: none; }
+    .filter-options { display: grid; gap: 8px; }
+    button:focus-visible, .conv-card:focus-visible, .file-label:focus-visible {
+      outline: 3px solid rgba(71, 99, 255, .40);
+      outline-offset: 2px;
+    }
+    @media (max-width: 920px) {
+      html, body { width: 100%; height: 100%; }
+      body { height: 100dvh; overflow: hidden; overscroll-behavior: none; }
+      .app {
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        grid-template-rows: auto auto minmax(0, 1fr);
+      }
+      header {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        padding: calc(11px + env(safe-area-inset-top, 0px)) 13px 11px;
+        position: relative;
+        z-index: 20;
+      }
+      h1 { font-size: 16px; line-height: 1.3; margin: 0; }
+      .subtitle { display: none; }
+      .mobile-menu-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7px 11px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .top-actions {
+        display: none;
+        position: absolute;
+        top: calc(100% - 2px);
+        right: 11px;
+        z-index: 30;
+        padding: 10px;
+        width: min(270px, calc(100vw - 24px));
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 13px;
+        box-shadow: 0 14px 34px rgba(15,23,42,.18);
+      }
+      .top-actions.open { display: flex; }
+      .top-actions button { width: 100%; text-align: left; min-height: 40px; }
+      .mobile-nav {
+        display: flex;
+        gap: 4px;
+        padding: 7px 11px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        z-index: 8;
+      }
+      .mobile-tab {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-width: 0;
+        min-height: 42px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--muted);
+        font-weight: 650;
+        font-size: 14px;
+      }
+      .mobile-tab.active {
+        background: var(--accent-soft);
+        color: #2c45be;
+      }
+      .mobile-tab-count {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: rgba(71,99,255,.12);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .layout { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+      .layout[data-mobile-pane="list"] #sidebar { display: flex; }
+      .layout[data-mobile-pane="list"] #chatPanel { display: none; }
+      .layout[data-mobile-pane="viewer"] #sidebar { display: none; }
+      .layout[data-mobile-pane="viewer"] #chatPanel { display: grid; }
+      #sidebar { min-height: 0; border-right: 0; }
+      #chatPanel { min-height: 0; grid-template-rows: auto minmax(0,1fr); }
+      .upload-zone {
+        margin: 10px 11px;
+        padding: 12px;
+        gap: 7px;
+        box-shadow: none;
+      }
+      .upload-line { gap: 7px; }
+      .upload-line button, .file-label { min-height: 39px; }
+      .stats { gap: 6px; }
+      .stat { padding: 7px 9px; }
+      .stat .num { font-size: 15px; }
+      .app.has-data .upload-zone {
+        margin: 8px 11px 7px;
+        padding: 7px 9px;
+        border: 1px solid var(--border);
+        background: #fbfcff;
+        border-radius: 11px;
+      }
+      .app.has-data .upload-zone .stats,
+      .app.has-data .upload-zone .hint,
+      .app.has-data #demoBtn { display: none; }
+      .app.has-data .upload-zone .file-label {
+        min-height: 34px;
+        padding: 6px 11px;
+        background: #fff;
+        color: var(--accent);
+      }
+      .app.has-data .upload-zone .file-label::after {
+        content: "（可追加导入）";
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .error-box { max-height: 100px; overflow-y: auto; }
+      .filters { padding: 8px 11px 9px; gap: 7px; }
+      .search-row { grid-template-columns: minmax(0,1fr) auto; gap: 7px; }
+      .search-row .input { min-height: 42px; font-size: 16px; }
+      .filter-toggle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding: 5px 3px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: left;
+      }
+      .filter-toggle .filter-arrow { transition: transform .16s ease; }
+      .filters.filters-expanded .filter-arrow { transform: rotate(180deg); }
+      .filter-options { display: none; }
+      .filters.filters-expanded .filter-options { display: grid; gap: 8px; padding-top: 3px; }
+      .filter-options select { min-height: 40px; font-size: 12px; }
+      .filter-options .hint { display: none; }
+      .list-head { padding: 9px 13px 7px; }
+      #dateRange { display: none; }
+      .conversation-list {
+        padding: 3px 10px calc(16px + env(safe-area-inset-bottom, 0px));
+      }
+      .conv-card {
+        padding: 12px;
+        margin-bottom: 5px;
+        border-color: var(--border);
+        border-radius: 12px;
+        background: white;
+      }
+      .conv-card:active { background: var(--accent-soft); }
+      .conv-title { font-size: 14px; }
+      .conv-meta { font-size: 11px; }
+      .conv-preview { line-height: 1.5; }
+      .viewer-head { padding: 9px 12px 8px; gap: 7px; }
+      .back-to-list {
+        display: inline-flex;
+        align-self: start;
+        align-items: center;
+        border: 0;
+        background: none;
+        padding: 3px 0 5px;
+        color: #3454d4;
+        font-size: 13px;
+      }
+      .viewer-title-row { display: grid; gap: 9px; }
+      .viewer-title { font-size: 17px; }
+      .viewer-meta {
+        font-size: 11px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .viewer-actions {
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        max-width: 100%;
+        padding: 2px 1px 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .viewer-actions button {
+        min-height: 35px;
+        padding: 7px 9px;
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+      .message-wrap {
+        overflow-x: hidden;
+        padding: 10px 10px calc(18px + env(safe-area-inset-bottom, 0px));
+      }
+      .message { margin-bottom: 10px; border-radius: 13px; }
+      .message-head { padding: 9px 11px; }
+      .message-body { padding: 12px; overflow-wrap: anywhere; }
+      .message-time { font-size: 11px; }
+      .empty { padding: 15px; }
+      .empty-card { padding: 20px; border-radius: 16px; }
+      .empty-card h2 { font-size: 19px; }
+      .toast {
+        right: 12px;
+        bottom: calc(13px + env(safe-area-inset-bottom, 0px));
+        max-width: calc(100vw - 24px);
+      }
+    }
+    @media (max-width: 360px) {
+      h1 { font-size: 14px; }
+      .mobile-tab { font-size: 13px; }
+      .filter-grid { gap: 6px; }
+      .viewer-actions button { padding: 7px; font-size: 11px; }
+    }
+
+    .unlock-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: #f3f5fc; }
+    .unlock-card { width: min(100%, 450px); border: 1px solid #e1e5f1; border-radius: 24px; padding: clamp(24px, 6vw, 38px); background: #fff; box-shadow: 0 22px 70px rgba(22,37,84,.11); }
+    .unlock-symbol { width: 62px; height: 62px; border-radius: 19px; display: flex; align-items:center; justify-content:center; background: linear-gradient(135deg,#4862fd,#816df8); color: #fff; margin-bottom: 22px; font-size: 30px; }
+    .unlock-card h2 { font-size: 23px; letter-spacing: -.02em; margin: 0 0 10px; }
+    .unlock-desc { color: #616b7f; font-size: 14px; line-height: 1.8; margin: 0 0 23px; }
+    .unlock-form { display: grid; gap: 14px; }
+    .unlock-form label { color: #323b4d; font-size: 13px; font-weight: 650; }
+    .unlock-form input[type=password] { width: 100%; border-radius: 12px; border: 1px solid #cbd2e1; padding: 13px; min-height: 48px; font-size: 16px; outline: none; }
+    .unlock-form input[type=password]:focus { border-color:#4763ff; box-shadow:0 0 0 3px rgba(71,99,255,.11); }
+    .remember-row { display:flex; align-items:center; gap:9px; line-height: 1.6; font-size: 13px; color: #495268; font-weight: 400!important; }
+    .remember-row input { width: 17px; height: 17px; accent-color: #4763ff; }
+    .unlock-submit { background:#4763ff; border-color:#4763ff; color:#fff; min-height: 47px; border-radius: 12px; font-weight: 700; }
+    .unlock-error { font-size: 13px; color: #b42318; min-height: 18px; margin: 0; }
+    .unlock-foot { border-top: 1px solid #e9ecf3; margin-top: 18px; padding-top: 16px; font-size: 12px; line-height:1.7; color:#7b8497; }
+    @media (max-width: 520px) { .unlock-overlay { align-items: center; padding: 16px; } .unlock-card { padding: 27px 22px; border-radius: 20px; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Claude 聊天记录阅读器</h1>
+        <div class="subtitle">&#26412;&#38405;&#35835;&#22120;&#24050;&#20869;&#32622;&#21152;&#23494;&#32842;&#22825;&#35760;&#24405;&#65307;&#35299;&#38145;&#21518;&#21487;&#20840;&#25991;&#25628;&#32034;&#65292;&#25903;&#25345;&#31163;&#32447;&#23433;&#35013;&#21644;&#36861;&#21152;&#23548;&#20837;&#12290;</div>
+      </div>
+      <button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-controls="headerActions" aria-expanded="false">操作 ···</button>
+      <div class="top-actions" id="headerActions">
+        <button id="exportAllBtn" disabled>导出全部拆分 JSON</button>
+        <button id="exportSearchBtn" disabled>导出当前搜索结果</button>
+        <button id="forgetDeviceBtn" class="ghost" type="button">&#38145;&#23450;&#24182;&#24536;&#35760;&#26412;&#26426;</button>
+        <button id="clearBtn" class="ghost">清空</button>
+      </div>
+    </header>
+
+    <nav class="mobile-nav" role="tablist" aria-label="移动端视图切换">
+      <button id="mobileListTab" class="mobile-tab active" type="button" role="tab" aria-controls="sidebar" aria-selected="true">
+        对话列表 <span class="mobile-tab-count" id="mobileListCount">0</span>
+      </button>
+      <button id="mobileViewerTab" class="mobile-tab" type="button" role="tab" aria-controls="chatPanel" aria-selected="false" disabled>聊天内容</button>
+    </nav>
+
+    <div class="layout" id="layout" data-mobile-pane="list">
+      <aside id="sidebar" role="tabpanel">
+        <section id="dropZone" class="upload-zone">
+          <div class="upload-line">
+            <label class="file-label" for="fileInput">&#36861;&#21152;&#23548;&#20837; JSON</label>
+            <input id="fileInput" type="file" accept=".json,application/json" multiple />
+            <button id="demoBtn" title="载入一个小型示例，方便先看页面效果">载入示例</button>
+          </div>
+          <div class="hint">支持上传一个或多个 JSON。兼容常见字段：conversations、chat_messages、messages、message_tree、name/title、created_at/updated_at 等。</div>
+          <div class="stats" id="stats">
+            <div class="stat"><div class="num" id="convCount">0</div><div class="label">对话</div></div>
+            <div class="stat"><div class="num" id="msgCount">0</div><div class="label">消息</div></div>
+            <div class="stat"><div class="num" id="matchCount">0</div><div class="label">匹配对话</div></div>
+            <div class="stat"><div class="num" id="fileCount">0</div><div class="label">文件</div></div>
+          </div>
+        </section>
+
+        <div id="errorBox" class="error-box"></div>
+
+        <section class="filters">
+          <div class="search-row">
+            <input id="searchInput" class="input" placeholder="搜索标题 / 消息全文…" autocomplete="off" />
+            <button id="clearSearchBtn" title="清空搜索">×</button>
+          </div>
+          <button id="filterToggleBtn" class="filter-toggle" type="button" aria-controls="filterOptions" aria-expanded="false">
+            <span id="filterToggleLabel">筛选与排序</span><span class="filter-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div id="filterOptions" class="filter-options">
+          <div class="filter-grid">
+            <select id="roleFilter">
+              <option value="all">全部角色</option>
+              <option value="user">只看用户消息</option>
+              <option value="assistant">只看 Claude 消息</option>
+              <option value="system">只看系统/工具消息</option>
+            </select>
+            <select id="sortMode">
+              <option value="updatedDesc">按更新时间倒序</option>
+              <option value="createdDesc">按创建时间倒序</option>
+              <option value="titleAsc">按标题 A-Z</option>
+              <option value="messageDesc">按消息数倒序</option>
+              <option value="matchDesc">按匹配数倒序</option>
+            </select>
+          </div>
+          <div class="filter-grid">
+            <select id="searchScope">
+              <option value="all">搜索标题和全文</option>
+              <option value="title">只搜索标题</option>
+              <option value="messages">只搜索消息</option>
+            </select>
+            <select id="messageMode">
+              <option value="allMessages">打开对话时显示全部消息</option>
+              <option value="matchedMessages">打开对话时只显示匹配消息</option>
+            </select>
+          </div>
+          <div class="hint">快捷键：<span class="kbd">/</span> 聚焦搜索，<span class="kbd">Esc</span> 清空搜索。</div>
+          </div>
+        </section>
+
+        <div class="list-head">
+          <span id="listSummary">未载入数据</span>
+          <span id="dateRange"></span>
+        </div>
+        <section id="conversationList" class="conversation-list"></section>
+      </aside>
+
+      <main id="chatPanel" role="tabpanel">
+        <section id="viewerHead" class="viewer-head" style="display:none;">
+          <button id="backToListBtn" class="back-to-list" type="button">← 返回对话列表</button>
+          <div class="viewer-title-row">
+            <div>
+              <div id="viewerTitle" class="viewer-title"></div>
+              <div id="viewerMeta" class="viewer-meta"></div>
+            </div>
+            <div class="viewer-actions">
+              <button id="copyMarkdownBtn">复制为 Markdown</button>
+              <button id="downloadConvBtn">下载本对话 JSON</button>
+              <button id="scrollTopBtn">回到顶部</button>
+            </div>
+          </div>
+        </section>
+        <section id="messageWrap" class="message-wrap">
+          <div class="empty">
+            <div class="empty-card">
+              <h2>先上传 Claude 导出的 JSON</h2>
+              <p>上传后左侧会按对话拆分，右侧可查看每条消息。搜索会同时匹配标题和消息正文，并在打开对话后高亮命中内容。</p>
+              <p>所有解析都在当前浏览器完成，适合查看私密聊天记录。建议直接用本地浏览器打开这个 HTML 文件使用。</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+
+  <div id="unlockOverlay" class="unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+    <div class="unlock-card">
+      <div class="unlock-symbol" aria-hidden="true">&#128274;</div>
+      <h2 id="unlockTitle">&#35299;&#38145;&#31169;&#23494;&#32842;&#22825;&#23384;&#26723;</h2>
+      <p class="unlock-desc" id="unlockDesc">&#35760;&#24405;&#24050;&#21152;&#23494;&#20869;&#32622;&#22312;&#38405;&#35835;&#22120;&#20013;&#65292;&#26080;&#38656;&#20877;&#19978;&#20256;&#25991;&#20214;&#12290;&#35831;&#36755;&#20837;&#21333;&#29420;&#20445;&#31649;&#30340;&#35299;&#38145;&#21475;&#20196;&#12290;</p>
+      <form class="unlock-form" id="unlockForm" style="display:none">
+        <label for="unlockPassword">&#35299;&#38145;&#21475;&#20196;</label>
+        <input id="unlockPassword" type="password" autocomplete="current-password" required spellcheck="false" />
+        <label class="remember-row"><input id="rememberDevice" type="checkbox" checked />&#35760;&#20303;&#27492;&#35774;&#22791;&#65292;&#19979;&#27425;&#33258;&#21160;&#35299;&#38145;</label>
+        <button id="unlockSubmit" class="unlock-submit" type="submit">&#35299;&#38145;&#24182;&#25171;&#24320;&#38405;&#35835;&#22120;</button>
+        <p id="unlockError" class="unlock-error" role="alert"></p>
+      </form>
+      <div class="unlock-foot">&#23384;&#26723;&#22312;&#27983;&#35272;&#22120;&#26412;&#22320;&#35299;&#23494;&#12290;&#22914;&#26524;&#24536;&#35760;&#21475;&#20196;&#65292;&#24517;&#39035;&#25214;&#22238;&#21333;&#29420;&#20445;&#23384;&#30340;&#35299;&#38145;&#23494;&#38053;&#12290;</div>
+    </div>
+  </div>
+  <script id="encryptedArchive" type="application/json">{"version":1,"type":"chat-archive","kdf":"PBKDF2-SHA256","iterations":310000,"cipher":"AES-256-GCM","compression":"gzip","salt":"yUWP574WiCNyYBBPeH8H6g==","nonce":"gbHR6JmeZ668TVj6","conversationCount":108,"messageCount":6715,"payloadLength":4268344,"chunkFiles":["archive/chunk-00.txt","archive/chunk-01.txt","archive/chunk-02.txt","archive/chunk-03.txt","archive/chunk-04.txt","archive/chunk-05.txt","archive/chunk-06.txt","archive/chunk-07.txt","archive/chunk-08.txt","archive/chunk-09.txt","archive/chunk-10.txt","archive/chunk-11.txt","archive/chunk-12.txt","archive/chunk-13.txt","archive/chunk-14.txt","archive/chunk-15.txt","archive/chunk-16.txt","archive/chunk-17.txt","archive/chunk-18.txt","archive/chunk-19.txt","archive/chunk-20.txt","archive/chunk-21.txt","archive/chunk-22.txt","archive/chunk-23.txt","archive/chunk-24.txt","archive/chunk-25.txt","archive/chunk-26.txt","archive/chunk-27.txt","archive/chunk-28.txt","archive/chunk-29.txt","archive/chunk-30.txt","archive/chunk-31.txt"]}</script>
+  <script>
+    "use strict";
+
+    const state = {
+      conversations: [],
+      filtered: [],
+      selectedId: null,
+      filesLoaded: 0,
+      errors: [],
+      search: "",
+      roleFilter: "all",
+      sortMode: "updatedDesc",
+      searchScope: "all",
+      messageMode: "allMessages",
+      mobilePane: "list"
+    };
+
+    const els = {
+      app: document.querySelector(".app"),
+      layout: document.getElementById("layout"),
+      mobileListTab: document.getElementById("mobileListTab"),
+      mobileViewerTab: document.getElementById("mobileViewerTab"),
+      mobileListCount: document.getElementById("mobileListCount"),
+      mobileMenuBtn: document.getElementById("mobileMenuBtn"),
+      headerActions: document.getElementById("headerActions"),
+      backToListBtn: document.getElementById("backToListBtn"),
+      filters: document.querySelector(".filters"),
+      filterToggleBtn: document.getElementById("filterToggleBtn"),
+      filterToggleLabel: document.getElementById("filterToggleLabel"),
+      fileInput: document.getElementById("fileInput"),
+      dropZone: document.getElementById("dropZone"),
+      demoBtn: document.getElementById("demoBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      exportAllBtn: document.getElementById("exportAllBtn"),
+      exportSearchBtn: document.getElementById("exportSearchBtn"),
+      searchInput: document.getElementById("searchInput"),
+      clearSearchBtn: document.getElementById("clearSearchBtn"),
+      roleFilter: document.getElementById("roleFilter"),
+      sortMode: document.getElementById("sortMode"),
+      searchScope: document.getElementById("searchScope"),
+      messageMode: document.getElementById("messageMode"),
+      conversationList: document.getElementById("conversationList"),
+      listSummary: document.getElementById("listSummary"),
+      dateRange: document.getElementById("dateRange"),
+      convCount: document.getElementById("convCount"),
+      msgCount: document.getElementById("msgCount"),
+      matchCount: document.getElementById("matchCount"),
+      fileCount: document.getElementById("fileCount"),
+      viewerHead: document.getElementById("viewerHead"),
+      viewerTitle: document.getElementById("viewerTitle"),
+      viewerMeta: document.getElementById("viewerMeta"),
+      messageWrap: document.getElementById("messageWrap"),
+      copyMarkdownBtn: document.getElementById("copyMarkdownBtn"),
+      downloadConvBtn: document.getElementById("downloadConvBtn"),
+      scrollTopBtn: document.getElementById("scrollTopBtn"),
+      errorBox: document.getElementById("errorBox"),
+      toast: document.getElementById("toast")
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function normalizeSpace(value) {
+      return String(value ?? "").replace(/\s+/g, " ").trim();
+    }
+
+    function toDateValue(value) {
+      if (!value) return null;
+      if (typeof value === "number") {
+        const ms = value > 100000000000 ? value : value * 1000;
+        const d = new Date(ms);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (typeof value === "string") {
+        const d = new Date(value);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    }
+
+    function formatDate(value, includeTime = true) {
+      const d = value instanceof Date ? value : toDateValue(value);
+      if (!d) return "未知时间";
+      const options = includeTime
+        ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+        : { year: "numeric", month: "2-digit", day: "2-digit" };
+      return new Intl.DateTimeFormat("zh-CN", options).format(d);
+    }
+
+    function safeFileName(name) {
+      return normalizeSpace(name || "claude-conversation")
+        .replace(/[\\/:*?"<>|]+/g, "_")
+        .slice(0, 80) || "claude-conversation";
+    }
+
+    function downloadText(filename, text, type = "application/json;charset=utf-8") {
+      const blob = new Blob([text], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function showToast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 2400);
+    }
+
+    function roleLabel(role) {
+      if (role === "user") return "用户";
+      if (role === "assistant") return "Claude";
+      if (role === "system") return "系统/工具";
+      return role || "未知";
+    }
+
+    function normalizeRole(raw) {
+      const r = String(raw ?? "").toLowerCase();
+      if (["human", "user", "me", "client"].includes(r)) return "user";
+      if (["assistant", "claude", "bot", "ai", "model"].includes(r)) return "assistant";
+      if (["system", "tool", "function", "developer"].includes(r)) return "system";
+      if (r.includes("human")) return "user";
+      if (r.includes("assistant") || r.includes("claude")) return "assistant";
+      if (r.includes("system") || r.includes("tool")) return "system";
+      return "unknown";
+    }
+
+    function extractTextFromContent(content) {
+      if (content == null) return "";
+      if (typeof content === "string") return content;
+      if (typeof content === "number" || typeof content === "boolean") return String(content);
+      if (Array.isArray(content)) {
+        return content.map(part => extractTextFromContent(part)).filter(Boolean).join("\n");
+      }
+      if (typeof content === "object") {
+        const directKeys = ["text", "content", "value", "body", "message", "transcript"];
+        for (const key of directKeys) {
+          if (typeof content[key] === "string") return content[key];
+        }
+        if (content.type && content.name) return `[${content.type}: ${content.name}]`;
+        if (content.file_name || content.filename || content.name) {
+          return `[文件: ${content.file_name || content.filename || content.name}]`;
+        }
+        if (content.type && content.input) return `[${content.type}]\n${extractTextFromContent(content.input)}`;
+        const fragments = [];
+        for (const [k, v] of Object.entries(content)) {
+          if (["uuid", "id", "created_at", "updated_at", "sender", "role", "parent", "children"].includes(k)) continue;
+          const text = extractTextFromContent(v);
+          if (text) fragments.push(text);
+        }
+        return fragments.join("\n");
+      }
+      return "";
+    }
+
+    function extractAttachments(msg) {
+      const result = [];
+      const candidates = []
+        .concat(Array.isArray(msg.attachments) ? msg.attachments : [])
+        .concat(Array.isArray(msg.files) ? msg.files : [])
+        .concat(Array.isArray(msg.file_attachments) ? msg.file_attachments : []);
+
+      for (const item of candidates) {
+        if (!item) continue;
+        if (typeof item === "string") {
+          result.push({ name: item, type: "attachment" });
+        } else {
+          result.push({
+            name: item.file_name || item.filename || item.name || item.title || item.id || "未命名附件",
+            type: item.mime_type || item.media_type || item.type || "attachment",
+            size: item.size || item.size_bytes || null
+          });
+        }
+      }
+      return result;
+    }
+
+    function looksLikeMessage(obj) {
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+      return Boolean(
+        obj.sender || obj.role || obj.author ||
+        obj.text || obj.content || obj.message ||
+        obj.created_at || obj.createdAt
+      );
+    }
+
+    function normalizeMessage(msg, index, fallbackRole = "unknown") {
+      let roleRaw = msg.sender ?? msg.role ?? msg.author?.role ?? msg.author ?? fallbackRole;
+      if (typeof roleRaw === "object") roleRaw = roleRaw.role || roleRaw.name || fallbackRole;
+
+      const text = msg.text ?? msg.message ?? msg.body ?? msg.content ?? msg.parts ?? msg.markdown ?? "";
+      const normalizedText = extractTextFromContent(text).trim();
+
+      const createdAt = msg.created_at ?? msg.createdAt ?? msg.timestamp ?? msg.time ?? msg.date ?? msg.updated_at ?? null;
+      const id = msg.uuid || msg.id || msg.message_id || `${Date.now()}-${Math.random()}-${index}`;
+
+      return {
+        id: String(id),
+        index,
+        role: normalizeRole(roleRaw),
+        rawRole: String(roleRaw ?? fallbackRole),
+        createdAt,
+        text: normalizedText,
+        attachments: extractAttachments(msg),
+        raw: msg
+      };
+    }
+
+    function flattenMessageTree(tree) {
+      const out = [];
+      const seen = new Set();
+
+      function visit(node) {
+        if (!node || typeof node !== "object") return;
+        const key = node.uuid || node.id || JSON.stringify(node).slice(0, 80);
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        if (looksLikeMessage(node.message)) out.push(node.message);
+        else if (looksLikeMessage(node)) out.push(node);
+
+        const childContainers = [node.children, node.child_uuids, node.replies, node.nodes];
+        for (const children of childContainers) {
+          if (!children) continue;
+          if (Array.isArray(children)) children.forEach(visit);
+          else if (typeof children === "object") Object.values(children).forEach(visit);
+        }
+      }
+
+      if (Array.isArray(tree)) tree.forEach(visit);
+      else if (typeof tree === "object") Object.values(tree).forEach(visit);
+
+      return out;
+    }
+
+    function getConversationArray(data) {
+      if (Array.isArray(data)) return data;
+
+      const paths = [
+        ["conversations"],
+        ["data", "conversations"],
+        ["chats"],
+        ["data", "chats"],
+        ["items"],
+        ["data"],
+        ["results"]
+      ];
+
+      for (const path of paths) {
+        let current = data;
+        let ok = true;
+        for (const key of path) {
+          if (current && typeof current === "object" && key in current) current = current[key];
+          else { ok = false; break; }
+        }
+        if (ok && Array.isArray(current)) return current;
+      }
+
+      if (data && typeof data === "object") {
+        const values = Object.values(data);
+        const arrays = values.filter(Array.isArray);
+        const likely = arrays.find(arr => arr.some(item => item && typeof item === "object" && (
+          item.chat_messages || item.messages || item.message_tree || item.title || item.name
+        )));
+        if (likely) return likely;
+      }
+
+      return null;
+    }
+
+    function extractMessagesFromConversation(conv) {
+      if (!conv || typeof conv !== "object") return [];
+
+      if (Array.isArray(conv.chat_messages)) return conv.chat_messages;
+      if (Array.isArray(conv.messages)) return conv.messages;
+      if (Array.isArray(conv.turns)) return conv.turns;
+      if (Array.isArray(conv.items) && conv.items.some(looksLikeMessage)) return conv.items;
+      if (conv.message_tree) return flattenMessageTree(conv.message_tree);
+      if (conv.mapping) return flattenMessageTree(conv.mapping);
+
+      if (looksLikeMessage(conv)) return [conv];
+      return [];
+    }
+
+    function titleFromConversation(conv, messages, sourceName, index) {
+      const explicit = conv.name || conv.title || conv.summary || conv.subject || conv.conversation_name;
+      if (normalizeSpace(explicit)) return normalizeSpace(explicit);
+      const firstUser = messages.find(m => m.role === "user" && normalizeSpace(m.text));
+      const firstText = firstUser || messages.find(m => normalizeSpace(m.text));
+      if (firstText) return normalizeSpace(firstText.text).slice(0, 60);
+      return `${sourceName.replace(/\.json$/i, "") || "Claude"} 对话 ${index + 1}`;
+    }
+
+    function normalizeConversation(conv, sourceName, index) {
+      const rawMessages = extractMessagesFromConversation(conv);
+      const messages = rawMessages.map((m, i) => normalizeMessage(m, i));
+
+      const createdCandidates = [
+        conv.created_at, conv.createdAt, conv.create_time, conv.timestamp, conv.started_at,
+        ...messages.map(m => m.createdAt)
+      ].map(toDateValue).filter(Boolean);
+
+      const updatedCandidates = [
+        conv.updated_at, conv.updatedAt, conv.update_time, conv.ended_at,
+        ...messages.map(m => m.createdAt)
+      ].map(toDateValue).filter(Boolean);
+
+      const created = createdCandidates.length ? new Date(Math.min(...createdCandidates.map(d => d.getTime()))) : null;
+      const updated = updatedCandidates.length ? new Date(Math.max(...updatedCandidates.map(d => d.getTime()))) : created;
+
+      messages.sort((a, b) => {
+        const da = toDateValue(a.createdAt);
+        const db = toDateValue(b.createdAt);
+        if (da && db) return da - db;
+        return a.index - b.index;
+      });
+      messages.forEach((m, i) => m.index = i);
+
+      const id = String(conv.uuid || conv.id || conv.conversation_id || `${sourceName}-${index}-${Math.random().toString(16).slice(2)}`);
+      const title = titleFromConversation(conv, messages, sourceName, index);
+      const allText = [title, ...messages.map(m => m.text), ...messages.flatMap(m => m.attachments.map(a => a.name))].join("\n").toLowerCase();
+
+      return {
+        id,
+        sourceName,
+        title,
+        createdAt: created ? created.toISOString() : null,
+        updatedAt: updated ? updated.toISOString() : null,
+        messages,
+        messageCount: messages.length,
+        allText,
+        raw: conv
+      };
+    }
+
+    function parseClaudeJson(data, sourceName) {
+      const array = getConversationArray(data);
+
+      if (array) {
+        const conversations = array
+          .map((item, index) => normalizeConversation(item, sourceName, index))
+          .filter(c => c.messageCount > 0 || normalizeSpace(c.title));
+
+        if (conversations.length) return conversations;
+
+        if (array.some(looksLikeMessage)) {
+          return [normalizeConversation({ title: sourceName, messages: array }, sourceName, 0)];
+        }
+      }
+
+      if (data && typeof data === "object") {
+        const single = normalizeConversation(data, sourceName, 0);
+        if (single.messageCount > 0) return [single];
+      }
+
+      return [];
+    }
+
+    async function readFile(file) {
+      const text = await file.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        throw new Error(`${file.name} 不是合法 JSON：${err.message}`);
+      }
+      return parseClaudeJson(data, file.name);
+    }
+
+    async function handleFiles(files) {
+      const list = Array.from(files || []);
+      if (!list.length) return;
+
+      const newConvs = [];
+      state.errors = [];
+
+      for (const file of list) {
+        try {
+          const parsed = await readFile(file);
+          if (!parsed.length) {
+            state.errors.push(`${file.name}：未识别到对话或消息。`);
+          } else {
+            newConvs.push(...parsed);
+          }
+        } catch (err) {
+          state.errors.push(err.message || String(err));
+        }
+      }
+
+      state.conversations.push(...dedupeConversationIds(newConvs, state.conversations));
+      state.filesLoaded += list.length;
+      if (!state.selectedId && state.conversations.length) state.selectedId = state.conversations[0].id;
+      applyFilters();
+      if (newConvs.length) setMobilePane("list");
+      showErrors();
+
+      if (newConvs.length) showToast(`已载入 ${newConvs.length} 个对话`);
+      if (state.errors.length) showToast(`有 ${state.errors.length} 个问题，见左侧提示`);
+    }
+
+    function dedupeConversationIds(incoming, existing) {
+      const used = new Set(existing.map(c => c.id));
+      return incoming.map(c => {
+        let id = c.id;
+        if (used.has(id)) {
+          let suffix = 2;
+          while (used.has(`${id}-${suffix}`)) suffix++;
+          c.id = `${id}-${suffix}`;
+        }
+        used.add(c.id);
+        return c;
+      });
+    }
+
+    function queryTerms(query) {
+      const q = normalizeSpace(query).toLowerCase();
+      if (!q) return [];
+      const parts = q.split(/\s+/).filter(Boolean);
+      return [...new Set([q, ...parts].filter(t => t.length > 0))].sort((a, b) => b.length - a.length);
+    }
+
+    function matchInfo(conv, query) {
+      const terms = queryTerms(query);
+      if (!terms.length) return { matched: true, count: 0, messageIndexes: new Set() };
+
+      const scope = state.searchScope;
+      const titleText = conv.title.toLowerCase();
+      // Multiple space-separated terms must all appear somewhere in the selected scope.
+      // Otherwise common words cause almost every conversation to match.
+      const tokens = normalizeSpace(query).toLowerCase().split(/\s+/).filter(Boolean);
+      const inMessage = token => conv.messages.some(m =>
+        m.text.toLowerCase().includes(token) ||
+        m.attachments.some(a => String(a.name).toLowerCase().includes(token))
+      );
+      const containsToken = token => scope === "title" ? titleText.includes(token)
+        : scope === "messages" ? inMessage(token)
+        : conv.allText.includes(token);
+      if (!tokens.every(containsToken)) {
+        return { matched: false, count: 0, messageIndexes: new Set() };
+      }
+      let count = 0;
+      const messageIndexes = new Set();
+
+      if (scope !== "messages") {
+        for (const term of terms) {
+          if (titleText.includes(term)) count++;
+        }
+      }
+
+      if (scope !== "title") {
+        conv.messages.forEach((m, idx) => {
+          const hay = `${m.text}\n${m.attachments.map(a => a.name).join("\n")}`.toLowerCase();
+          let msgMatched = false;
+          for (const term of terms) {
+            const occurrences = countOccurrences(hay, term);
+            if (occurrences) {
+              count += occurrences;
+              msgMatched = true;
+            }
+          }
+          if (msgMatched) messageIndexes.add(idx);
+        });
+      }
+
+      return { matched: count > 0, count, messageIndexes };
+    }
+
+    function countOccurrences(haystack, needle) {
+      if (!needle) return 0;
+      let count = 0;
+      let pos = 0;
+      while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+        count++;
+        pos += Math.max(needle.length, 1);
+      }
+      return count;
+    }
+
+    function applyFilters() {
+      const q = state.search;
+      state.conversations.forEach(c => c._match = matchInfo(c, q));
+
+      let result = state.conversations.filter(c => c._match.matched);
+      if (state.roleFilter !== "all") {
+        result = result.filter(c => c.messages.some(m => m.role === state.roleFilter));
+      }
+
+      result.sort((a, b) => {
+        if (state.sortMode === "titleAsc") return a.title.localeCompare(b.title, "zh-CN");
+        if (state.sortMode === "messageDesc") return b.messageCount - a.messageCount;
+        if (state.sortMode === "matchDesc") return (b._match?.count || 0) - (a._match?.count || 0);
+        if (state.sortMode === "createdDesc") return dateNum(b.createdAt) - dateNum(a.createdAt);
+        return dateNum(b.updatedAt) - dateNum(a.updatedAt);
+      });
+
+      state.filtered = result;
+      if (state.selectedId && !state.filtered.some(c => c.id === state.selectedId)) {
+        state.selectedId = state.filtered[0]?.id || null;
+      } else if (!state.selectedId && state.filtered.length) {
+        state.selectedId = state.filtered[0].id;
+      }
+
+      render();
+    }
+
+    function dateNum(value) {
+      const d = toDateValue(value);
+      return d ? d.getTime() : 0;
+    }
+
+    function highlight(text, query) {
+      const raw = escapeHtml(text);
+      const terms = queryTerms(query);
+      if (!terms.length) return raw;
+      let output = raw;
+      for (const term of terms) {
+        const escaped = escapeRegExp(escapeHtml(term));
+        if (!escaped) continue;
+        output = output.replace(new RegExp(escaped, "gi"), match => `<mark>${match}</mark>`);
+      }
+      return output;
+    }
+
+    function escapeRegExp(str) {
+      return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function setMobilePane(pane) {
+      if (pane === "viewer" && !state.selectedId) return;
+      state.mobilePane = pane === "viewer" ? "viewer" : "list";
+      updateMobileUI();
+    }
+
+    function updateMobileUI() {
+      if (state.mobilePane === "viewer" && !state.selectedId) state.mobilePane = "list";
+      const listActive = state.mobilePane === "list";
+      els.layout.dataset.mobilePane = state.mobilePane;
+      els.mobileListTab.classList.toggle("active", listActive);
+      els.mobileViewerTab.classList.toggle("active", !listActive);
+      els.mobileListTab.setAttribute("aria-selected", String(listActive));
+      els.mobileViewerTab.setAttribute("aria-selected", String(!listActive));
+      els.mobileViewerTab.disabled = !state.selectedId;
+      els.mobileListCount.textContent = state.filtered.length;
+      els.app.classList.toggle("has-data", state.conversations.length > 0);
+      const filtered = state.roleFilter !== "all" || state.sortMode !== "updatedDesc" ||
+        state.searchScope !== "all" || state.messageMode !== "allMessages";
+      els.filterToggleLabel.textContent = filtered ? "筛选与排序 · 已设置" : "筛选与排序";
+    }
+
+    function closeHeaderMenu() {
+      els.headerActions.classList.remove("open");
+      els.mobileMenuBtn.setAttribute("aria-expanded", "false");
+    }
+
+    function render() {
+      renderStats();
+      renderConversationList();
+      renderSelectedConversation();
+      els.exportAllBtn.disabled = state.conversations.length === 0;
+      els.exportSearchBtn.disabled = state.filtered.length === 0;
+      updateMobileUI();
+    }
+
+    function renderStats() {
+      const totalMessages = state.conversations.reduce((sum, c) => sum + c.messageCount, 0);
+      els.convCount.textContent = state.conversations.length;
+      els.msgCount.textContent = totalMessages;
+      els.matchCount.textContent = state.filtered.length;
+      els.fileCount.textContent = state.filesLoaded;
+
+      const dates = state.conversations
+        .flatMap(c => [c.createdAt, c.updatedAt])
+        .map(toDateValue)
+        .filter(Boolean);
+      if (dates.length) {
+        const min = new Date(Math.min(...dates.map(d => d.getTime())));
+        const max = new Date(Math.max(...dates.map(d => d.getTime())));
+        els.dateRange.textContent = `${formatDate(min, false)} - ${formatDate(max, false)}`;
+      } else {
+        els.dateRange.textContent = "";
+      }
+      els.listSummary.textContent = state.conversations.length
+        ? `显示 ${state.filtered.length} / ${state.conversations.length} 个对话`
+        : "未载入数据";
+    }
+
+    function renderConversationList() {
+      const previousScroll = els.conversationList.scrollTop;
+      if (!state.conversations.length) {
+        els.conversationList.innerHTML = `<div class="empty" style="height:auto;padding:22px 12px;">选择上方 JSON 文件，或点击“载入示例”，即可在这里查看对话列表。</div>`;
+        return;
+      }
+      if (!state.filtered.length) {
+        els.conversationList.innerHTML = `<div class="empty" style="height:auto;padding:24px 10px;">没有匹配的对话</div>`;
+        return;
+      }
+
+      const html = state.filtered.map(conv => {
+        const previewMsg = conv.messages.find(m => state.roleFilter === "all" || m.role === state.roleFilter) || conv.messages[0];
+        const preview = previewMsg ? normalizeSpace(previewMsg.text).slice(0, 180) : "";
+        const active = conv.id === state.selectedId ? " active" : "";
+        const match = conv._match?.count ? `<span class="match-pill">${conv._match.count} 命中</span>` : `<span class="count-pill">${conv.messageCount} 条</span>`;
+        const source = `<span class="source-chip">${escapeHtml(conv.sourceName)}</span>`;
+        return `
+          <article class="conv-card${active}" data-id="${escapeHtml(conv.id)}" role="button" tabindex="0" aria-label="打开对话：${escapeHtml(conv.title)}">
+            <div class="conv-title">
+              <span>${highlight(conv.title, state.search)}</span>
+              ${match}
+            </div>
+            <div class="conv-meta">${formatDate(conv.updatedAt || conv.createdAt)} · ${source}</div>
+            <div class="conv-preview">${highlight(preview, state.search)}</div>
+          </article>
+        `;
+      }).join("");
+
+      els.conversationList.innerHTML = html;
+      els.conversationList.scrollTop = previousScroll;
+      els.conversationList.querySelectorAll(".conv-card").forEach(card => {
+        const selectConversation = () => {
+          state.selectedId = card.dataset.id;
+          render();
+          els.messageWrap.scrollTop = 0;
+          setMobilePane("viewer");
+        };
+        card.addEventListener("click", selectConversation);
+        card.addEventListener("keydown", e => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectConversation();
+          }
+        });
+      });
+    }
+
+    function renderSelectedConversation() {
+      const conv = state.conversations.find(c => c.id === state.selectedId);
+
+      if (!conv) {
+        els.viewerHead.style.display = "none";
+        els.messageWrap.innerHTML = `
+          <div class="empty">
+            <div class="empty-card">
+              <h2>没有可显示的对话</h2>
+              <p>请上传 Claude JSON，或调整搜索条件。</p>
+            </div>
+          </div>`;
+        return;
+      }
+
+      els.viewerHead.style.display = "";
+      els.viewerTitle.innerHTML = highlight(conv.title, state.search);
+      const userCount = conv.messages.filter(m => m.role === "user").length;
+      const assistantCount = conv.messages.filter(m => m.role === "assistant").length;
+      const systemCount = conv.messages.filter(m => m.role === "system").length;
+      els.viewerMeta.innerHTML = [
+        `来源：<span class="source-chip">${escapeHtml(conv.sourceName)}</span>`,
+        `创建：${formatDate(conv.createdAt)}`,
+        `更新：${formatDate(conv.updatedAt)}`,
+        `消息：${conv.messageCount} 条（用户 ${userCount} / Claude ${assistantCount}${systemCount ? " / 系统 " + systemCount : ""}）`,
+        conv._match?.count ? `当前搜索命中：${conv._match.count}` : ""
+      ].filter(Boolean).join(" · ");
+
+      let messages = conv.messages;
+      if (state.roleFilter !== "all") messages = messages.filter(m => m.role === state.roleFilter);
+      if (state.messageMode === "matchedMessages" && state.search) {
+        const matchedSet = conv._match?.messageIndexes || new Set();
+        messages = messages.filter((m) => matchedSet.has(m.index));
+      }
+
+      if (!messages.length) {
+        els.messageWrap.innerHTML = `<div class="empty"><div class="empty-card"><h2>这个对话下没有符合筛选条件的消息</h2><p>可以切换左侧角色筛选或显示模式。</p></div></div>`;
+        return;
+      }
+
+      els.messageWrap.innerHTML = messages.map((m, displayIndex) => renderMessage(m, displayIndex)).join("");
+    }
+
+    function renderMessage(m) {
+      const attachments = m.attachments.length
+        ? `<div class="attachments">${m.attachments.map(a => `<span class="attachment" title="${escapeHtml(a.type || "")}">${escapeHtml(a.name)}${a.size ? ` · ${escapeHtml(formatBytes(a.size))}` : ""}</span>`).join("")}</div>`
+        : "";
+      const roleClass = ["user", "assistant", "system"].includes(m.role) ? m.role : "";
+      return `
+        <article class="message" id="msg-${m.index}">
+          <div class="message-head">
+            <div class="message-head-left">
+              <span class="role-pill ${roleClass}">${roleLabel(m.role)}</span>
+              <span class="small-muted">#${m.index + 1}</span>
+            </div>
+            <div class="message-time">${formatDate(m.createdAt)}</div>
+          </div>
+          <div class="message-body">${highlight(m.text || "[无文本内容]", state.search)}</div>
+          ${attachments}
+        </article>
+      `;
+    }
+
+    function formatBytes(bytes) {
+      const n = Number(bytes);
+      if (!isFinite(n) || n <= 0) return "";
+      const units = ["B", "KB", "MB", "GB"];
+      let value = n;
+      let unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit++;
+      }
+      return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+    }
+
+    function toExportConversation(conv) {
+      return {
+        id: conv.id,
+        title: conv.title,
+        sourceName: conv.sourceName,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+        messageCount: conv.messageCount,
+        messages: conv.messages.map(m => ({
+          index: m.index,
+          role: m.role,
+          rawRole: m.rawRole,
+          createdAt: m.createdAt,
+          text: m.text,
+          attachments: m.attachments
+        }))
+      };
+    }
+
+    function toMarkdown(conv) {
+      const lines = [
+        `# ${conv.title}`,
+        "",
+        `- 来源：${conv.sourceName}`,
+        `- 创建：${formatDate(conv.createdAt)}`,
+        `- 更新：${formatDate(conv.updatedAt)}`,
+        `- 消息数：${conv.messageCount}`,
+        ""
+      ];
+      for (const m of conv.messages) {
+        lines.push(`## ${m.index + 1}. ${roleLabel(m.role)} · ${formatDate(m.createdAt)}`);
+        lines.push("");
+        lines.push(m.text || "[无文本内容]");
+        if (m.attachments.length) {
+          lines.push("");
+          lines.push("附件：" + m.attachments.map(a => a.name).join("；"));
+        }
+        lines.push("");
+      }
+      return lines.join("\n");
+    }
+
+    function showErrors() {
+      if (!state.errors.length) {
+        els.errorBox.style.display = "none";
+        els.errorBox.innerHTML = "";
+        return;
+      }
+      els.errorBox.style.display = "block";
+      els.errorBox.innerHTML = state.errors.map(e => `<div>• ${escapeHtml(e)}</div>`).join("");
+    }
+
+    function loadDemo() {
+      const demo = [
+        {
+          uuid: "demo-1",
+          name: "示例：河北储能政策测算",
+          created_at: "2026-07-01T10:00:00+08:00",
+          updated_at: "2026-07-01T10:18:00+08:00",
+          chat_messages: [
+            { sender: "human", created_at: "2026-07-01T10:00:00+08:00", text: "帮我整理河北储能收益测算口径，重点看中长期和现货。" },
+            { sender: "assistant", created_at: "2026-07-01T10:02:00+08:00", text: "可以。建议把收益拆成中长期价差、现货价差、调频、容量补偿及充电侧费用减免几部分。" },
+            { sender: "human", created_at: "2026-07-01T10:18:00+08:00", text: "再按领导汇报口径压缩一下。" }
+          ]
+        },
+        {
+          uuid: "demo-2",
+          name: "示例：越南储能政策问题清单",
+          created_at: "2026-06-25T15:00:00+08:00",
+          updated_at: "2026-06-25T16:00:00+08:00",
+          chat_messages: [
+            { sender: "human", created_at: "2026-06-25T15:00:00+08:00", text: "把越南语问题改得更严谨一点。" },
+            { sender: "assistant", created_at: "2026-06-25T15:08:00+08:00", text: "建议保留中文原意，只调整越南语表述，尤其是 PDP8、BESS、MOIT、EVN 等缩写和政策名称。" }
+          ]
+        }
+      ];
+      const parsed = parseClaudeJson(demo, "demo.json");
+      state.conversations = dedupeConversationIds(parsed, state.conversations);
+      state.filesLoaded += 1;
+      state.selectedId = state.conversations[0]?.id || null;
+      applyFilters();
+      setMobilePane("list");
+      showToast("已载入示例数据");
+    }
+
+    function clearAll() {
+      state.conversations = [];
+      state.filtered = [];
+      state.selectedId = null;
+      state.filesLoaded = 0;
+      state.errors = [];
+      state.search = "";
+      els.searchInput.value = "";
+      els.fileInput.value = "";
+      showErrors();
+      applyFilters();
+      setMobilePane("list");
+      closeHeaderMenu();
+      showToast("已清空");
+    }
+
+    els.fileInput.addEventListener("change", e => {
+      const selectedFiles = Array.from(e.target.files || []);
+      e.target.value = "";
+      handleFiles(selectedFiles);
+    });
+    els.mobileListTab.addEventListener("click", () => setMobilePane("list"));
+    els.mobileViewerTab.addEventListener("click", () => setMobilePane("viewer"));
+    els.backToListBtn.addEventListener("click", () => setMobilePane("list"));
+    els.filterToggleBtn.addEventListener("click", () => {
+      const expanded = els.filters.classList.toggle("filters-expanded");
+      els.filterToggleBtn.setAttribute("aria-expanded", String(expanded));
+    });
+    els.mobileMenuBtn.addEventListener("click", () => {
+      const expanded = els.headerActions.classList.toggle("open");
+      els.mobileMenuBtn.setAttribute("aria-expanded", String(expanded));
+    });
+    document.addEventListener("pointerdown", e => {
+      if (!els.headerActions.contains(e.target) && e.target !== els.mobileMenuBtn) closeHeaderMenu();
+    });
+    els.headerActions.addEventListener("click", e => {
+      if (e.target.closest("button")) closeHeaderMenu();
+    });
+    els.dropZone.addEventListener("dragover", e => {
+      e.preventDefault();
+      els.dropZone.classList.add("dragover");
+    });
+    els.dropZone.addEventListener("dragleave", () => els.dropZone.classList.remove("dragover"));
+    els.dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      els.dropZone.classList.remove("dragover");
+      handleFiles(e.dataTransfer.files);
+    });
+
+    els.demoBtn.addEventListener("click", loadDemo);
+    els.clearBtn.addEventListener("click", clearAll);
+
+    els.searchInput.addEventListener("input", e => {
+      state.search = e.target.value;
+      applyFilters();
+    });
+    els.clearSearchBtn.addEventListener("click", () => {
+      state.search = "";
+      els.searchInput.value = "";
+      applyFilters();
+    });
+
+    els.roleFilter.addEventListener("change", e => { state.roleFilter = e.target.value; applyFilters(); });
+    els.sortMode.addEventListener("change", e => { state.sortMode = e.target.value; applyFilters(); });
+    els.searchScope.addEventListener("change", e => { state.searchScope = e.target.value; applyFilters(); });
+    els.messageMode.addEventListener("change", e => { state.messageMode = e.target.value; applyFilters(); });
+
+    els.exportAllBtn.addEventListener("click", () => {
+      const data = state.conversations.map(toExportConversation);
+      downloadText("claude_conversations_split.json", JSON.stringify(data, null, 2));
+    });
+
+    els.exportSearchBtn.addEventListener("click", () => {
+      const data = state.filtered.map(toExportConversation);
+      downloadText("claude_conversations_search_result.json", JSON.stringify(data, null, 2));
+    });
+
+    els.downloadConvBtn.addEventListener("click", () => {
+      const conv = state.conversations.find(c => c.id === state.selectedId);
+      if (!conv) return;
+      downloadText(`${safeFileName(conv.title)}.json`, JSON.stringify(toExportConversation(conv), null, 2));
+    });
+
+    els.copyMarkdownBtn.addEventListener("click", async () => {
+      const conv = state.conversations.find(c => c.id === state.selectedId);
+      if (!conv) return;
+      try {
+        await navigator.clipboard.writeText(toMarkdown(conv));
+        showToast("已复制 Markdown");
+      } catch (err) {
+        downloadText(`${safeFileName(conv.title)}.md`, toMarkdown(conv), "text/markdown;charset=utf-8");
+        showToast("浏览器未允许复制，已改为下载 Markdown");
+      }
+    });
+
+    els.scrollTopBtn.addEventListener("click", () => {
+      els.messageWrap.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        els.searchInput.focus();
+      }
+      if (e.key === "Escape") {
+        if (els.headerActions.classList.contains("open")) {
+          closeHeaderMenu();
+        } else if (state.search) {
+          state.search = "";
+          els.searchInput.value = "";
+          applyFilters();
+        } else if (state.mobilePane === "viewer" && matchMedia("(max-width: 920px)").matches) {
+          setMobilePane("list");
+        }
+      }
+    });
+
+    applyFilters();
+
+    const archiveOverlay = document.getElementById('unlockOverlay');
+    const archiveForm = document.getElementById('unlockForm');
+    const archivePassword = document.getElementById('unlockPassword');
+    const archiveRemember = document.getElementById('rememberDevice');
+    const archiveError = document.getElementById('unlockError');
+    const archiveDescription = document.getElementById('unlockDesc');
+    const archiveSubmit = document.getElementById('unlockSubmit');
+    const archiveBundle = JSON.parse(document.getElementById('encryptedArchive').textContent);
+    // Shards contain only ciphertext. Reconstruct the Base64 payload in the browser.
+    let archivePayloadPromise = null;
+    async function loadArchivePayload() {
+      if (archiveBundle.payload) return archiveBundle.payload;
+      if (!archivePayloadPromise) {
+        archivePayloadPromise = (async () => {
+          const chunks = await Promise.all(archiveBundle.chunkFiles.map(async path => {
+            const response = await fetch('./' + path);
+            if (!response.ok) throw new Error('Cannot load encrypted archive shard: ' + path);
+            return response.text();
+          }));
+          const payload = chunks.join('');
+          if (payload.length !== archiveBundle.payloadLength) throw new Error('Encrypted archive shard length mismatch');
+          archiveBundle.payload = payload;
+          return payload;
+        })().catch(error => { archivePayloadPromise = null; throw error; });
+      }
+      return archivePayloadPromise;
+    }
+    function bytesFromBase64(b64) {
+      const data = atob(b64);
+      const out = new Uint8Array(data.length);
+      for (let i = 0; i < data.length; i++) out[i] = data.charCodeAt(i);
+      return out;
+    }
+    async function getKeyFromPassword(password) {
+      const raw = new TextEncoder().encode(password);
+      const material = await crypto.subtle.importKey('raw', raw, 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey({name:'PBKDF2',salt:bytesFromBase64(archiveBundle.salt),iterations:archiveBundle.iterations,hash:'SHA-256'},
+        material,{name:'AES-GCM',length:256},false,['decrypt']);
+    }
+    async function decryptArchive(key) {
+      const payload = await loadArchivePayload();
+      const clearCompressed = await crypto.subtle.decrypt({name:'AES-GCM',iv:bytesFromBase64(archiveBundle.nonce),additionalData:new TextEncoder().encode('ClaudeArchivePWA-v1')},key,bytesFromBase64(payload));
+      if (!('DecompressionStream' in window)) throw new Error('Browser does not support gzip decompression');
+      const decompressed = new Blob([clearCompressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const value = JSON.parse(await new Response(decompressed).text());
+      const parsed = parseClaudeJson(value,'内置存档.json');
+      if (parsed.length !== archiveBundle.conversationCount || parsed.reduce((n,c)=>n+c.messageCount,0)!==archiveBundle.messageCount) {
+        throw new Error('Archive integrity check failed');
+      }
+      state.conversations.push(...dedupeConversationIds(parsed, state.conversations));
+      state.filesLoaded += 1;
+      if (!state.selectedId) state.selectedId = state.conversations[0]?.id || null;
+      applyFilters();
+      archiveOverlay.remove();
+      showToast('\u5df2\u81ea\u52a8\u8f7d\u5165 '+parsed.length+' \u4e2a\u5bf9\u8bdd');
+    }
+    function openArchiveDb() {
+      return new Promise((resolve,reject)=> {
+        const req = indexedDB.open('claude-reader-archive-key-v1',1);
+        req.onupgradeneeded=()=>req.result.createObjectStore('keys');
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+      });
+    }
+    async function archiveKeyStore(action,value) {
+      const db=await openArchiveDb();
+      try {
+        return await new Promise((resolve,reject)=>{
+          const tx=db.transaction('keys',action==='get'?'readonly':'readwrite');
+          const store=tx.objectStore('keys');
+          const req=action==='get'?store.get('archive'):(action==='set'?store.put(value,'archive'):store.delete('archive'));
+          req.onsuccess=()=>resolve(req.result);
+          req.onerror=()=>reject(req.error);
+        });
+      } finally { db.close(); }
+    }
+    async function beginArchive() {
+      const showForm=()=>{
+        archiveForm.style.display='grid';
+        archiveDescription.textContent='\u8bb0\u5f55\u5df2\u52a0\u5bc6\u5185\u7f6e\u5728\u9605\u8bfb\u5668\u4e2d\uff0c\u65e0\u9700\u518d\u4e0a\u4f20\u3002\u8bf7\u8f93\u5165\u89e3\u9501\u53e3\u4ee4\u3002';
+      };
+      if (!window.isSecureContext || !window.crypto?.subtle) {
+        archiveDescription.textContent='This app requires HTTPS and a modern browser with Web Crypto.';
+        return;
+      }
+      try {
+        const key=await archiveKeyStore('get');
+        if (key) {
+          try { await decryptArchive(key); return; }
+          catch (e) { await archiveKeyStore('delete'); }
+        }
+      } catch (e) { /* IndexedDB is optional in private browsing */ }
+      showForm();
+    }
+    archiveForm.addEventListener('submit',async e=>{
+      e.preventDefault();
+      archiveError.textContent='';
+      const pass=archivePassword.value.trim();
+      if(!pass) return;
+      archiveSubmit.disabled=true;
+      try {
+        const key=await getKeyFromPassword(pass);
+        await decryptArchive(key);
+        if(archiveRemember.checked) {
+          try { await archiveKeyStore('set',key); } catch (e) { showToast('\u5f53\u524d\u6d4f\u89c8\u5668\u65e0\u6cd5\u8bb0\u4f4f\u89e3\u9501\u72b6\u6001'); }
+        } else { try { await archiveKeyStore('delete'); } catch(e){} }
+        archivePassword.value='';
+      } catch(err) {
+        archiveError.textContent= 'Unlock failed. Check the password and try again.';
+        console.warn('Archive unlock failed',err.name);
+      } finally { archiveSubmit.disabled=false; }
+    });
+    document.getElementById('forgetDeviceBtn').addEventListener('click', async ()=>{
+      try { await archiveKeyStore('delete'); } catch (e) {}
+      window.location.reload();
+    });
+    if ('serviceWorker' in navigator && window.isSecureContext && location.protocol!=='file:') {
+      window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(err=>console.warn('PWA registration failed:',err)));
+    }
+    beginArchive();
+  </script>
+</body>
+</html>
