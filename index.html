@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#4763ff" />
-  <meta name="description" content="Encrypted offline Claude conversation reader" />
+  <meta name="description" content="Offline Claude conversation reader" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Claude Archive" />
@@ -692,6 +692,10 @@
     .unlock-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: #f3f5fc; }
     .unlock-card { width: min(100%, 450px); border: 1px solid #e1e5f1; border-radius: 24px; padding: clamp(24px, 6vw, 38px); background: #fff; box-shadow: 0 22px 70px rgba(22,37,84,.11); }
     .unlock-symbol { width: 62px; height: 62px; border-radius: 19px; display: flex; align-items:center; justify-content:center; background: linear-gradient(135deg,#4862fd,#816df8); color: #fff; margin-bottom: 22px; font-size: 30px; }
+    .archive-spinner { width:26px; height:26px; display:block; border:3px solid rgba(255,255,255,.38); border-top-color:#fff; border-radius:50%; animation:archive-spinner-turn .8s linear infinite; }
+    @keyframes archive-spinner-turn { to { transform:rotate(360deg); } }
+    #archiveRetryBtn { width:100%; margin-top:18px; }
+    [hidden] { display: none !important; }
     .unlock-card h2 { font-size: 23px; letter-spacing: -.02em; margin: 0 0 10px; }
     .unlock-desc { color: #616b7f; font-size: 14px; line-height: 1.8; margin: 0 0 23px; }
     .unlock-form { display: grid; gap: 14px; }
@@ -702,6 +706,8 @@
     .remember-row input { width: 17px; height: 17px; accent-color: #4763ff; }
     .unlock-submit { background:#4763ff; border-color:#4763ff; color:#fff; min-height: 47px; border-radius: 12px; font-weight: 700; }
     .unlock-error { font-size: 13px; color: #b42318; min-height: 18px; margin: 0; }
+    .unlock-status { font-size: 13px; color: #4d5e89; line-height: 1.5; min-height: 20px; margin: -5px 0 0; }
+    .unlock-status:empty { display: none; }
     .unlock-foot { border-top: 1px solid #e9ecf3; margin-top: 18px; padding-top: 16px; font-size: 12px; line-height:1.7; color:#7b8497; }
     @media (max-width: 520px) { .unlock-overlay { align-items: center; padding: 16px; } .unlock-card { padding: 27px 22px; border-radius: 20px; } }
   </style>
@@ -711,13 +717,12 @@
     <header>
       <div>
         <h1>Claude 聊天记录阅读器</h1>
-        <div class="subtitle">&#26412;&#38405;&#35835;&#22120;&#24050;&#20869;&#32622;&#21152;&#23494;&#32842;&#22825;&#35760;&#24405;&#65307;&#35299;&#38145;&#21518;&#21487;&#20840;&#25991;&#25628;&#32034;&#65292;&#25903;&#25345;&#31163;&#32447;&#23433;&#35013;&#21644;&#36861;&#21152;&#23548;&#20837;&#12290;</div>
+        <div class="subtitle">内置聊天记录，打开后自动载入；支持全文搜索、离线使用和追加导入。</div>
       </div>
       <button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-controls="headerActions" aria-expanded="false">操作 ···</button>
       <div class="top-actions" id="headerActions">
         <button id="exportAllBtn" disabled>导出全部拆分 JSON</button>
         <button id="exportSearchBtn" disabled>导出当前搜索结果</button>
-        <button id="forgetDeviceBtn" class="ghost" type="button">&#38145;&#23450;&#24182;&#24536;&#35760;&#26412;&#26426;</button>
         <button id="clearBtn" class="ghost">清空</button>
       </div>
     </header>
@@ -825,19 +830,14 @@
   <div id="toast" class="toast"></div>
 
 
-  <div id="unlockOverlay" class="unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+  <div id="unlockOverlay" class="unlock-overlay" role="status" aria-live="polite" aria-labelledby="unlockTitle">
     <div class="unlock-card">
-      <div class="unlock-symbol" aria-hidden="true">&#128274;</div>
-      <h2 id="unlockTitle">&#35299;&#38145;&#31169;&#23494;&#32842;&#22825;&#23384;&#26723;</h2>
-      <p class="unlock-desc" id="unlockDesc">&#35760;&#24405;&#24050;&#21152;&#23494;&#20869;&#32622;&#22312;&#38405;&#35835;&#22120;&#20013;&#65292;&#26080;&#38656;&#20877;&#19978;&#20256;&#25991;&#20214;&#12290;&#35831;&#36755;&#20837;&#21333;&#29420;&#20445;&#31649;&#30340;&#35299;&#38145;&#21475;&#20196;&#12290;</p>
-      <form class="unlock-form" id="unlockForm" style="display:none">
-        <label for="unlockPassword">&#35299;&#38145;&#21475;&#20196;</label>
-        <input id="unlockPassword" type="password" autocomplete="current-password" required spellcheck="false" />
-        <label class="remember-row"><input id="rememberDevice" type="checkbox" checked />&#35760;&#20303;&#27492;&#35774;&#22791;&#65292;&#19979;&#27425;&#33258;&#21160;&#35299;&#38145;</label>
-        <button id="unlockSubmit" class="unlock-submit" type="submit">&#35299;&#38145;&#24182;&#25171;&#24320;&#38405;&#35835;&#22120;</button>
-        <p id="unlockError" class="unlock-error" role="alert"></p>
-      </form>
-      <div class="unlock-foot">&#23384;&#26723;&#22312;&#27983;&#35272;&#22120;&#26412;&#22320;&#35299;&#23494;&#12290;&#22914;&#26524;&#24536;&#35760;&#21475;&#20196;&#65292;&#24517;&#39035;&#25214;&#22238;&#21333;&#29420;&#20445;&#23384;&#30340;&#35299;&#38145;&#23494;&#38053;&#12290;</div>
+      <div class="unlock-symbol" aria-hidden="true"><span class="archive-spinner"></span></div>
+      <h2 id="unlockTitle">正在打开聊天记录</h2>
+      <p class="unlock-desc" id="unlockDesc">存档将自动载入，无需输入口令。</p>
+      <p id="unlockStatus" class="unlock-status">正在准备存档…</p>
+      <p id="unlockError" class="unlock-error" role="alert" hidden></p>
+      <button id="archiveRetryBtn" class="unlock-submit" type="button" hidden>重新加载</button>
     </div>
   </div>
   <script id="encryptedArchive" type="application/json">{"version":1,"type":"chat-archive","kdf":"PBKDF2-SHA256","iterations":310000,"cipher":"AES-256-GCM","compression":"gzip","salt":"yUWP574WiCNyYBBPeH8H6g==","nonce":"gbHR6JmeZ668TVj6","conversationCount":108,"messageCount":6715,"payloadLength":4268344,"chunkFiles":["archive/chunk-00.txt","archive/chunk-01.txt","archive/chunk-02.txt","archive/chunk-03.txt","archive/chunk-04.txt","archive/chunk-05.txt","archive/chunk-06.txt","archive/chunk-07.txt","archive/chunk-08.txt","archive/chunk-09.txt","archive/chunk-10.txt","archive/chunk-11.txt","archive/chunk-12.txt","archive/chunk-13.txt","archive/chunk-14.txt","archive/chunk-15.txt","archive/chunk-16.txt","archive/chunk-17.txt","archive/chunk-18.txt","archive/chunk-19.txt","archive/chunk-20.txt","archive/chunk-21.txt","archive/chunk-22.txt","archive/chunk-23.txt","archive/chunk-24.txt","archive/chunk-25.txt","archive/chunk-26.txt","archive/chunk-27.txt","archive/chunk-28.txt","archive/chunk-29.txt","archive/chunk-30.txt","archive/chunk-31.txt"]}</script>
@@ -1767,26 +1767,78 @@
     applyFilters();
 
     const archiveOverlay = document.getElementById('unlockOverlay');
-    const archiveForm = document.getElementById('unlockForm');
-    const archivePassword = document.getElementById('unlockPassword');
-    const archiveRemember = document.getElementById('rememberDevice');
     const archiveError = document.getElementById('unlockError');
+    const archiveStatus = document.getElementById('unlockStatus');
     const archiveDescription = document.getElementById('unlockDesc');
-    const archiveSubmit = document.getElementById('unlockSubmit');
+    const archiveRetryBtn = document.getElementById('archiveRetryBtn');
+    function setArchiveStatus(message) { archiveStatus.textContent = message; }
+    function archiveFailure(message, code = 'archive') {
+      const error = new Error(message);
+      error.archiveCode = code;
+      return error;
+    }
     const archiveBundle = JSON.parse(document.getElementById('encryptedArchive').textContent);
-    // Shards contain only ciphertext. Reconstruct the Base64 payload in the browser.
+    // Bounded fetch concurrency protects mobile Safari against dozens of simultaneous
+    // archive downloads competing with the service worker's installation requests.
     let archivePayloadPromise = null;
+    const ARCHIVE_CACHE_NAME = 'claude-reader-open-2026-10-v4';
+    const ARCHIVE_MAX_PARALLEL = 3;
+    const ARCHIVE_FETCH_TIMEOUT_MS = 18000;
+    async function fetchArchiveChunk(path) {
+      const requestPath = './' + path;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ARCHIVE_FETCH_TIMEOUT_MS);
+        try {
+          const response = await fetch(requestPath, {signal: controller.signal});
+          if (!response.ok) {
+            throw archiveFailure('存档文件 ' + path + ' 返回 HTTP ' + response.status, 'network');
+          }
+          const contents = await response.text();
+          if (!contents) throw archiveFailure('存档文件为空：' + path, 'network');
+          return contents;
+        } catch (error) {
+          if (attempt === 3) {
+            throw archiveFailure('读取 ' + path + ' 失败：' + (error.message || error.name), 'network');
+          }
+          setArchiveStatus('网络波动，正在重试存档文件（' + attempt + '/2）…');
+          await new Promise(resolve => setTimeout(resolve, attempt * 650));
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+    }
     async function loadArchivePayload() {
       if (archiveBundle.payload) return archiveBundle.payload;
       if (!archivePayloadPromise) {
         archivePayloadPromise = (async () => {
-          const chunks = await Promise.all(archiveBundle.chunkFiles.map(async path => {
-            const response = await fetch('./' + path);
-            if (!response.ok) throw new Error('Cannot load encrypted archive shard: ' + path);
-            return response.text();
-          }));
+          const files = archiveBundle.chunkFiles;
+          const chunks = new Array(files.length);
+          const shardCache = (typeof caches === 'undefined') ? Promise.resolve(null)
+            : caches.open(ARCHIVE_CACHE_NAME).catch(() => null);
+          let index = 0;
+          let completed = 0;
+          setArchiveStatus('正在读取存档 0/' + files.length + '…');
+          const workers = Array.from({length: Math.min(ARCHIVE_MAX_PARALLEL, files.length)}, async () => {
+            while (index < files.length) {
+              const i = index++;
+              const path = files[i];
+              const contents = await fetchArchiveChunk(path);
+              chunks[i] = contents;
+              completed++;
+              setArchiveStatus('正在读取存档 ' + completed + '/' + files.length + '…');
+              // Cache ciphertext for offline access without blocking unlock on Safari's
+              // storage API. Cache failures never prevent reading the archive.
+              shardCache.then(cache => cache && cache.put('./' + path,
+                new Response(contents, {headers:{'Content-Type':'text/plain;charset=utf-8'}}))
+              ).catch(() => {});
+            }
+          });
+          await Promise.all(workers);
           const payload = chunks.join('');
-          if (payload.length !== archiveBundle.payloadLength) throw new Error('Encrypted archive shard length mismatch');
+          if (payload.length !== archiveBundle.payloadLength) {
+            throw archiveFailure('加密数据长度校验不一致', 'integrity');
+          }
           archiveBundle.payload = payload;
           return payload;
         })().catch(error => { archivePayloadPromise = null; throw error; });
@@ -1807,13 +1859,16 @@
     }
     async function decryptArchive(key) {
       const payload = await loadArchivePayload();
+      setArchiveStatus('下载完成，正在打开存档…');
       const clearCompressed = await crypto.subtle.decrypt({name:'AES-GCM',iv:bytesFromBase64(archiveBundle.nonce),additionalData:new TextEncoder().encode('ClaudeArchivePWA-v1')},key,bytesFromBase64(payload));
       if (!('DecompressionStream' in window)) throw new Error('Browser does not support gzip decompression');
       const decompressed = new Blob([clearCompressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+      setArchiveStatus('正在读取对话…');
       const value = JSON.parse(await new Response(decompressed).text());
+      setArchiveStatus('正在整理聊天记录…');
       const parsed = parseClaudeJson(value,'内置存档.json');
       if (parsed.length !== archiveBundle.conversationCount || parsed.reduce((n,c)=>n+c.messageCount,0)!==archiveBundle.messageCount) {
-        throw new Error('Archive integrity check failed');
+        throw archiveFailure('聊天记录数量校验失败', 'integrity');
       }
       state.conversations.push(...dedupeConversationIds(parsed, state.conversations));
       state.filesLoaded += 1;
@@ -1822,66 +1877,44 @@
       archiveOverlay.remove();
       showToast('\u5df2\u81ea\u52a8\u8f7d\u5165 '+parsed.length+' \u4e2a\u5bf9\u8bdd');
     }
-    function openArchiveDb() {
-      return new Promise((resolve,reject)=> {
-        const req = indexedDB.open('claude-reader-archive-key-v1',1);
-        req.onupgradeneeded=()=>req.result.createObjectStore('keys');
-        req.onsuccess=()=>resolve(req.result);
-        req.onerror=()=>reject(req.error);
-      });
-    }
-    async function archiveKeyStore(action,value) {
-      const db=await openArchiveDb();
-      try {
-        return await new Promise((resolve,reject)=>{
-          const tx=db.transaction('keys',action==='get'?'readonly':'readwrite');
-          const store=tx.objectStore('keys');
-          const req=action==='get'?store.get('archive'):(action==='set'?store.put(value,'archive'):store.delete('archive'));
-          req.onsuccess=()=>resolve(req.result);
-          req.onerror=()=>reject(req.error);
-        });
-      } finally { db.close(); }
-    }
+    // Public, password-free archive: the unlock material is bundled with the
+    // page. Anyone who can access the public site can read its conversations.
+    const AUTO_ARCHIVE_PASSPHRASE = "ii58rth0-9QbqNU_1-di28-lbM-o5FiesU8-iDHhhbXg";
+    let archiveBusy = false;
     async function beginArchive() {
-      const showForm=()=>{
-        archiveForm.style.display='grid';
-        archiveDescription.textContent='\u8bb0\u5f55\u5df2\u52a0\u5bc6\u5185\u7f6e\u5728\u9605\u8bfb\u5668\u4e2d\uff0c\u65e0\u9700\u518d\u4e0a\u4f20\u3002\u8bf7\u8f93\u5165\u89e3\u9501\u53e3\u4ee4\u3002';
-      };
-      if (!window.isSecureContext || !window.crypto?.subtle) {
-        archiveDescription.textContent='This app requires HTTPS and a modern browser with Web Crypto.';
-        return;
-      }
+      if (archiveBusy) return;
+      archiveBusy = true;
+      archiveError.hidden = true;
+      archiveError.textContent = '';
+      archiveRetryBtn.hidden = true;
+      archiveDescription.textContent = '存档将自动载入，无需输入口令。';
+      setArchiveStatus('正在准备存档…');
       try {
-        const key=await archiveKeyStore('get');
-        if (key) {
-          try { await decryptArchive(key); return; }
-          catch (e) { await archiveKeyStore('delete'); }
+        if (!window.isSecureContext || !window.crypto?.subtle) {
+          throw archiveFailure('请通过 HTTPS 打开此阅读器。', 'browser');
         }
-      } catch (e) { /* IndexedDB is optional in private browsing */ }
-      showForm();
-    }
-    archiveForm.addEventListener('submit',async e=>{
-      e.preventDefault();
-      archiveError.textContent='';
-      const pass=archivePassword.value.trim();
-      if(!pass) return;
-      archiveSubmit.disabled=true;
-      try {
-        const key=await getKeyFromPassword(pass);
+        const key = await getKeyFromPassword(AUTO_ARCHIVE_PASSPHRASE);
         await decryptArchive(key);
-        if(archiveRemember.checked) {
-          try { await archiveKeyStore('set',key); } catch (e) { showToast('\u5f53\u524d\u6d4f\u89c8\u5668\u65e0\u6cd5\u8bb0\u4f4f\u89e3\u9501\u72b6\u6001'); }
-        } else { try { await archiveKeyStore('delete'); } catch(e){} }
-        archivePassword.value='';
-      } catch(err) {
-        archiveError.textContent= 'Unlock failed. Check the password and try again.';
-        console.warn('Archive unlock failed',err.name);
-      } finally { archiveSubmit.disabled=false; }
-    });
-    document.getElementById('forgetDeviceBtn').addEventListener('click', async ()=>{
-      try { await archiveKeyStore('delete'); } catch (e) {}
-      window.location.reload();
-    });
+      } catch(error) {
+        setArchiveStatus('');
+        archiveError.hidden = false;
+        archiveRetryBtn.hidden = false;
+        archiveDescription.textContent = '自动载入没有完成，请重试。';
+        if (error.archiveCode === 'network') {
+          archiveError.textContent = '存档下载失败。请检查网络，然后点击「重新加载」。';
+        } else if (error.archiveCode === 'browser') {
+          archiveError.textContent = error.message;
+        } else if (error.archiveCode === 'integrity' || error.name === 'OperationError') {
+          archiveError.textContent = '存档文件校验失败，请刷新页面或重试。';
+        } else {
+          archiveError.textContent = '载入失败，请点击「重新加载」再试。';
+        }
+        console.warn('Archive load failed:', error.name, error.archiveCode || 'unknown');
+      } finally {
+        archiveBusy = false;
+      }
+    }
+    archiveRetryBtn.addEventListener('click', beginArchive);
     if ('serviceWorker' in navigator && window.isSecureContext && location.protocol!=='file:') {
       window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(err=>console.warn('PWA registration failed:',err)));
     }
