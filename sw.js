@@ -1,5 +1,5 @@
 // Scope-relative cache: works at https://username.github.io/repo-name/
-const CACHE_NAME='claude-reader-private-2026-10-v3';
+const CACHE_NAME='claude-reader-open-2026-10-v4';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
